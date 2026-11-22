@@ -1,0 +1,59 @@
+{
+  "name": "hussein-browser",
+  "productName": "Hussein Browser",
+  "version": "1.0.0",
+  "description": "A fast, simple web browser with built-in ad, tracker and popup blocking.",
+  "main": "main.js",
+  "author": "Alawieh",
+  "license": "MIT",
+  "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Alawieh/hussein-browser.git"
+  },
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder --win"
+  },
+  "dependencies": {
+    "@ghostery/adblocker-electron": "2.20.3",
+    "cross-fetch": "4.1.0"
+  },
+  "devDependencies": {
+    "electron": "45.4.1",
+    "electron-builder": "26.18.0"
+  },
+  "build": {
+    "appId": "com.alawieh.husseinbrowser",
+    "productName": "Hussein Browser",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "hider.js",
+      "ui/**/*",
+      "package.json"
+    ],
+    "win": {
+      "target": [
+        { "target": "nsis", "arch": ["x64"] },
+        { "target": "portable", "arch": ["x64"] }
+      ],
+      "icon": "build/icon.ico"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Hussein Browser",
+      "runAfterFinish": true,
+      "artifactName": "Hussein-Browser-Setup-${version}.${ext}"
+    },
+    "portable": {
+      "artifactName": "Hussein-Browser-Portable-${version}.${ext}"
+    }
+  }
+}

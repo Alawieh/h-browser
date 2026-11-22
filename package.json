@@ -1,7 +1,7 @@
 {
   "name": "hussein-browser",
   "productName": "Hussein Browser",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A fast, simple web browser with built-in ad, tracker and popup blocking.",
   "main": "main.js",
   "author": "Alawieh",

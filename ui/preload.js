@@ -1,6 +1,6 @@
 const { contextBridge, ipcRenderer } = require('electron');
 
-const allowed = ['navigate', 'back', 'forward', 'reload', 'stop', 'home', 'new-tab', 'close-tab', 'switch-tab', 'toggle-blocking', 'ui-ready'];
+const allowed = ['navigate', 'back', 'forward', 'reload', 'stop', 'home', 'new-tab', 'close-tab', 'switch-tab', 'toggle-blocking', 'ui-ready', 'tool-unwall', 'tool-hide', 'tool-screenshot', 'open-screenshots', 'auto-walls-on', 'toggle-auto-walls'];
 
 contextBridge.exposeInMainWorld('browser', {
   send: (channel, data) => {
@@ -8,4 +8,5 @@ contextBridge.exposeInMainWorld('browser', {
   },
   onState: (cb) => ipcRenderer.on('state', (_e, s) => cb(s)),
   onFocusAddress: (cb) => ipcRenderer.on('focus-address', () => cb()),
+  onToast: (cb) => ipcRenderer.on('toast', (_e, t) => cb(t)),
 });

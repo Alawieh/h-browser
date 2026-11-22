@@ -37,6 +37,20 @@ button:disabled { opacity: .35; cursor: default; }
 }
 #address:focus { border-color: #6ea8fe; }
 
+.tools { display: flex; gap: 2px; padding: 0 4px; border-left: 1px solid #4a4c52; margin-left: 4px; }
+.tool { display: flex; align-items: center; justify-content: center; color: #c9cbd1; }
+.tool svg { width: 18px; height: 18px; }
+.tool:hover:not(:disabled) { color: #fff; }
+.tool.flash { background: #2d5a3a; color: #7bd88f; }
+.tool.on { color: #7bd88f; box-shadow: inset 0 -2px 0 #7bd88f; }
+
+#toast {
+  position: fixed; right: 12px; top: 6px; z-index: 10;
+  max-width: 340px; padding: 6px 12px; border-radius: 14px;
+  background: #2d5a3a; color: #e8ffe9; font-size: 12px;
+  cursor: pointer; box-shadow: 0 2px 8px #0008;
+}
+
 #shield { display: flex; align-items: center; gap: 4px; padding: 0 10px; font-size: 13px; color: #7bd88f; }
 #shield.off { color: #9a9ca3; }
 #shield.off #shield-icon { filter: grayscale(1); }

@@ -56,6 +56,12 @@ window.browser.onState((s) => {
   if (!addressDirty && document.activeElement !== address) address.value = active.url;
   document.title = active.title;
 
+  // Walls button shows when auto-removal is on for this site
+  $('tool-unwall').classList.toggle('on', !!active.autoWalls);
+  $('tool-unwall').title = active.autoWalls
+    ? 'Walls are removed automatically on this site. Right-click to turn off.'
+    : 'Remove walls / overlays (Ctrl+Shift+X). Right-click: always remove on this site.';
+
   // Ad-block shield
   const shield = $('shield');
   $('count').textContent = active.blocked;
@@ -71,6 +77,36 @@ window.browser.onState((s) => {
 // The reload button doubles as stop while loading.
 $('reload').addEventListener('click', () => {
   window.browser.send($('reload').dataset.loading === '1' ? 'stop' : 'reload');
+});
+
+// Quick-action tools
+for (const id of ['tool-unwall', 'tool-hide', 'tool-screenshot']) {
+  $(id).addEventListener('click', () => {
+    window.browser.send(id);
+    $(id).classList.add('flash');
+    setTimeout(() => $(id).classList.remove('flash'), 400);
+  });
+}
+
+// Right-click the walls button = toggle "always remove walls on this site".
+$('tool-unwall').addEventListener('contextmenu', (e) => {
+  e.preventDefault();
+  window.browser.send('toggle-auto-walls');
+});
+
+let toastTimer, toastAction = null;
+const toast = $('toast');
+toast.addEventListener('click', () => {
+  if (toastAction) window.browser.send(toastAction);
+  toast.hidden = true;
+});
+window.browser.onToast(({ text, action }) => {
+  toast.textContent = text;
+  toastAction = action || null;
+  toast.style.cursor = action ? 'pointer' : 'default';
+  toast.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toast.hidden = true; }, action ? 7000 : 3500);
 });
 
 window.browser.send('ui-ready');

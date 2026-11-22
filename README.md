@@ -34,10 +34,22 @@
 
 - **Ad and tracker blocking.** Uses the same community filter lists as popular ad blockers (EasyList, EasyPrivacy and others) through the [Ghostery adblocker engine](https://github.com/ghostery/adblocker). Lists update automatically.
 - **Popup blocking.** A site can only open a new tab right after you click. Popups that match ad filters are blocked even then.
-- **Wall remover.** Get rid of paywall overlays, "disable your ad blocker" boxes, cookie walls and sign-up pop-ups. It also unlocks scrolling and turns right-click and text selection back on.
-- **Hide any element.** Right-click anything and choose *Hide This Element*. It stays hidden every time you visit that site.
+- **Wall remover.** Get rid of paywall overlays, "disable your ad blocker" boxes, cookie walls, sign-up pop-ups and invisible click-hijacking layers. It also unlocks scrolling and turns right-click and text selection back on.
+- **Auto wall removal.** If a site keeps showing the wall again on every new screen, turn on *Always Remove Walls on This Site*. The browser then removes walls as soon as they appear. Video players are left alone.
+- **Hide any element.** Click the 👁 button and then click anything, or right-click it and choose *Hide This Element*. It stays hidden every time you visit that site.
+- **Screenshots.** One click saves the visible page to `Pictures\Hussein Browser` and copies it to your clipboard, ready to paste.
 - **Tabs, address bar with Google search, back/forward/reload.**
 - **Shield counter.** The green shield shows how many things were blocked on the current page. Click it to turn blocking off for a moment.
+
+### Toolbar quick actions
+
+The three buttons next to the address bar:
+
+| Button | Click | Right-click |
+|---|---|---|
+| 🧱 **Remove walls** | Removes walls / overlays on this page now | Turns *always remove walls on this site* on or off (the button turns green while it's on) |
+| 👁 **Hide element** | Then click anything on the page to hide it. Press `Esc` to cancel | — |
+| 📷 **Screenshot** | Saves a PNG and copies it to the clipboard | — |
 
 ### Keyboard shortcuts
 
@@ -46,6 +58,7 @@
 | `Ctrl+Shift+H` | Hide the element under your mouse |
 | `Ctrl+Shift+X` | Remove walls / overlays on this page |
 | `Ctrl+Shift+M` | Open the tools menu at your mouse (works even when a site blocks right-click) |
+| `Ctrl+Shift+S` | Take a screenshot |
 | `Ctrl+T` / `Ctrl+W` | New tab / close tab |
 | `Ctrl+L` | Jump to the address bar |
 | `Ctrl+R` or `F5` | Reload |
@@ -88,7 +101,7 @@ npm run dist       # build the Windows installer + portable .exe into dist/
 | File | What it does |
 |---|---|
 | `main.js` | Main process: window, tabs (one `WebContentsView` each), ad blocker setup, popup blocking, navigation |
-| `hider.js` | Right-click menu, *Hide This Element*, wall remover, keyboard shortcuts, per-site memory of hidden elements |
+| `hider.js` | Right-click menu, *Hide This Element* and click-to-hide mode, wall remover and auto-removal watcher, keyboard shortcuts, per-site memory |
 | `ui/` | The tab bar and toolbar (HTML/CSS/JS) and its preload bridge |
 | `build/` | App icon used for the installer |
 

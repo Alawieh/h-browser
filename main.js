@@ -1,4 +1,4 @@
-const { app, BaseWindow, WebContentsView, session, ipcMain, Menu } = require('electron');
+const { app, BaseWindow, WebContentsView, session, ipcMain, Menu, clipboard, ClipboardItem, shell } = require('electron');
 const path = require('path');
 const fs = require('fs').promises;
 const fetch = require('cross-fetch');
@@ -31,6 +31,7 @@ function tabInfo(id) {
     canGoBack: wc.navigationHistory.canGoBack(),
     canGoForward: wc.navigationHistory.canGoForward(),
     blocked: t.blocked,
+    autoWalls: !!(t.tools && t.tools.isAuto()),
     active: id === activeId,
   };
 }
@@ -116,7 +117,7 @@ function createTab(url = HOME) {
     }
   });
 
-  hider.attach(wc, { createTab });
+  tabs.get(id).tools = hider.attach(wc, { createTab, onScreenshot: takeScreenshot, onToast: toast, onChange: pushState });
 
   wc.loadURL(url);
   switchTab(id);
@@ -145,6 +146,43 @@ function closeTab(id) {
 function activeWC() {
   const t = tabs.get(activeId);
   return t && t.view.webContents;
+}
+
+function toast(text, action) {
+  send('toast', { text, action });
+}
+
+function activeTools() {
+  const t = tabs.get(activeId);
+  return t && t.tools;
+}
+
+const screenshotDir = () => path.join(app.getPath('pictures'), 'Hussein Browser');
+let lastScreenshot = null;
+
+// Saves the visible page as a PNG in Pictures\Hussein Browser and copies it to the clipboard.
+async function takeScreenshot() {
+  const wc = activeWC();
+  if (!wc) return null;
+  let img;
+  try { img = await wc.capturePage(); } catch (e) {
+    console.error('[screenshot] failed:', e.message);
+    toast('Screenshot failed. Is the window minimized?');
+    return null;
+  }
+  if (img.isEmpty()) { toast('Screenshot failed: page is empty.'); return null; }
+  let host = 'page';
+  try { host = new URL(wc.getURL()).hostname.replace(/^www\./, '') || 'page'; } catch {}
+  const stamp = new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+  const file = path.join(screenshotDir(), `${host}_${stamp}.png`);
+  await fs.mkdir(screenshotDir(), { recursive: true });
+  await fs.writeFile(file, img.toPNG());
+  clipboard.write([new ClipboardItem({ 'image/png': new Blob([img.toPNG()], { type: 'image/png' }) })])
+    .catch((e) => console.error('[screenshot] clipboard failed:', e.message));
+  lastScreenshot = file;
+  toast('Screenshot saved and copied. Click to open folder.', 'open-screenshots');
+  console.log('[screenshot]', file);
+  return file;
 }
 
 async function initBlocker() {
@@ -200,6 +238,12 @@ ipcMain.on('close-tab', (_e, id) => closeTab(id));
 ipcMain.on('switch-tab', (_e, id) => switchTab(id));
 ipcMain.on('toggle-blocking', () => setBlocking(!blockingEnabled));
 ipcMain.on('ui-ready', pushState);
+ipcMain.on('tool-unwall', () => activeTools()?.unwall());
+ipcMain.on('tool-hide', () => activeTools()?.pickMode());
+ipcMain.on('tool-screenshot', () => takeScreenshot());
+ipcMain.on('auto-walls-on', () => activeTools()?.setAutoWalls(true));
+ipcMain.on('toggle-auto-walls', () => { const t = activeTools(); if (t) t.setAutoWalls(!t.isAuto()); });
+ipcMain.on('open-screenshots', () => (lastScreenshot ? shell.showItemInFolder(lastScreenshot) : shell.openPath(screenshotDir())));
 
 function buildMenu() {
   // Hidden menu that provides keyboard shortcuts.
@@ -225,6 +269,8 @@ function buildMenu() {
 }
 
 app.setAppUserModelId('com.alawieh.husseinbrowser');
+// Keep rendering when the window is covered, so screenshots never come back blank.
+app.commandLine.appendSwitch('disable-features', 'CalculateNativeWinOcclusion');
 
 app.whenReady().then(async () => {
   browsingSession = session.fromPartition('persist:browser');

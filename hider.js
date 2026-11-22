@@ -1,5 +1,6 @@
 // Right-click menu + "hide this element" tool, with hidden elements remembered per site.
-const { app, Menu, clipboard } = require('electron');
+const { app, Menu, clipboard, ClipboardItem } = require('electron');
+const copyText = (text) => clipboard.write([new ClipboardItem({ 'text/plain': text })]).catch(() => {});
 const path = require('path');
 const fs = require('fs');
 
@@ -23,8 +24,9 @@ function cssFor(selectors) {
 
 // Runs in the page: find the element under (x, y), climb to the outermost
 // wrapper with the same size, hide it, and return a CSS selector for it.
-const pickScript = (x, y) => `(() => {
-  let el = document.elementFromPoint(${x}, ${y});
+// Shared in-page helper: element under (x, y) -> the box that should be hidden.
+const CHOOSE = `const __choose = (x, y) => {
+  let el = document.elementFromPoint(x, y);
   if (!el || el === document.documentElement || el === document.body) return null;
   const same = (a, b) => { const r = a.getBoundingClientRect(), s = b.getBoundingClientRect();
     return Math.abs(r.width - s.width) < 4 && Math.abs(r.height - s.height) < 4; };
@@ -32,6 +34,13 @@ const pickScript = (x, y) => `(() => {
   // Clicking text inside a box should hide the box, not just the word.
   while (up(el) && getComputedStyle(el).display.startsWith('inline') && el.tagName !== 'IMG' && el.tagName !== 'IFRAME') el = el.parentElement;
   while (up(el) && same(el, el.parentElement)) el = el.parentElement;
+  return el;
+};`;
+
+const pickScript = (x, y) => `(() => {
+  ${CHOOSE}
+  const el = __choose(${x}, ${y});
+  if (!el) return null;
   const good = (id) => id && !/\\d{3,}|[:.]/.test(id) && document.querySelectorAll('#' + CSS.escape(id)).length === 1;
   const parts = [];
   for (let n = el; n && n !== document.body && n !== document.documentElement; n = n.parentElement) {
@@ -44,36 +53,115 @@ const pickScript = (x, y) => `(() => {
   return parts.join(' > ');
 })()`;
 
-// Runs in the page: remove full-screen overlays (paywalls, cookie walls, "sign up" modals)
-// and undo the scroll-lock / blur they usually add.
-const unwallScript = `(() => {
-  let removed = 0;
-  const vw = innerWidth, vh = innerHeight;
-  for (const el of document.querySelectorAll('body *')) {
-    const cs = getComputedStyle(el);
-    if (cs.position !== 'fixed' && cs.position !== 'sticky') continue;
+// Runs in the page: "click to hide" mode. Highlights the box under the mouse
+// and resolves with the click position (or null on Escape).
+const pickModeScript = `new Promise((resolve) => {
+  ${CHOOSE}
+  if (window.__hbPicking) return resolve(null);
+  window.__hbPicking = true;
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;pointer-events:none;z-index:2147483647;background:rgba(234,67,53,.25);outline:2px solid #ea4335;border-radius:3px;transition:all .05s';
+  const tip = document.createElement('div');
+  tip.textContent = 'Click what you want to hide - Esc to cancel';
+  tip.style.cssText = 'position:fixed;top:10px;left:50%;transform:translateX(-50%);z-index:2147483647;pointer-events:none;background:#202124;color:#fff;font:13px Segoe UI,sans-serif;padding:7px 14px;border-radius:16px;box-shadow:0 2px 8px #0006';
+  document.documentElement.append(box, tip);
+  const move = (e) => {
+    const el = __choose(e.clientX, e.clientY);
+    if (!el) { box.style.width = '0'; return; }
     const r = el.getBoundingClientRect();
-    if (r.width * r.height >= vw * vh * 0.3 || (parseInt(cs.zIndex) > 999 && r.height > vh * 0.15)) { el.remove(); removed++; }
+    Object.assign(box.style, { left: r.left + 'px', top: r.top + 'px', width: r.width + 'px', height: r.height + 'px' });
+  };
+  const block = (e) => { e.preventDefault(); e.stopImmediatePropagation(); };
+  const evs = ['mousedown', 'mouseup', 'pointerdown', 'pointerup'];
+  const done = (val) => {
+    removeEventListener('mousemove', move, true);
+    for (const t of evs) removeEventListener(t, block, true);
+    removeEventListener('click', click, true);
+    removeEventListener('keydown', key, true);
+    box.remove(); tip.remove(); window.__hbPicking = false;
+    resolve(val);
+  };
+  const click = (e) => { block(e); done({ x: e.clientX, y: e.clientY }); };
+  const key = (e) => { if (e.key === 'Escape') { block(e); done(null); } };
+  addEventListener('mousemove', move, true);
+  for (const t of evs) addEventListener(t, block, true);
+  addEventListener('click', click, true);
+  addEventListener('keydown', key, true);
+})`;
+
+// In-page function: remove full-screen overlays (paywalls, "disable your ad
+// blocker" walls, cookie walls, invisible click-hijack layers) and undo the
+// scroll-lock / blur they add. Safe to run repeatedly.
+const UNWALL_FN = `function __hbUnwall() {
+  let removed = 0;
+  const vw = innerWidth, vh = innerHeight, area = vw * vh;
+  const fs = document.fullscreenElement;
+  const keep = (el) => (fs && (el === fs || el.contains(fs) || fs.contains(el))) || el.querySelector('video');
+  for (const el of document.querySelectorAll('body *')) {
+    const cs = getComputedStyle(el);
+    const z = parseInt(cs.zIndex) || 0;
+    if (cs.position === 'fixed' || cs.position === 'sticky') {
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height >= area * 0.3 || (z > 999 && r.height > vh * 0.15)) { if (!keep(el)) { el.remove(); removed++; } }
+    } else if (cs.position === 'absolute' && z > 999) {
+      const r = el.getBoundingClientRect();
+      if (r.width * r.height >= area * 0.5 && !keep(el)) { el.remove(); removed++; }
+    }
   }
+  const set = (el, prop, val) => { if (el && el.style.getPropertyValue(prop) !== val) el.style.setProperty(prop, val, 'important'); };
   for (const el of [document.documentElement, document.body]) {
-    el.style.setProperty('overflow', 'auto', 'important');
-    el.style.setProperty('position', 'static', 'important');
+    if (!el) continue;
+    const cs = getComputedStyle(el);
+    if (cs.overflow === 'hidden' || cs.overflowY === 'hidden') set(el, 'overflow', 'auto');
+    if (cs.position === 'fixed') set(el, 'position', 'static');
   }
   for (const el of document.querySelectorAll('body *')) {
     const cs = getComputedStyle(el);
-    if (cs.filter.includes('blur')) el.style.setProperty('filter', 'none', 'important');
-    if (cs.pointerEvents === 'none' && el.children.length) el.style.setProperty('pointer-events', 'auto', 'important');
+    if (cs.filter.includes('blur')) set(el, 'filter', 'none');
   }
-  // Undo right-click / selection / copy blocking.
-  for (const t of ['contextmenu', 'selectstart', 'copy']) {
-    window.addEventListener(t, (e) => e.stopImmediatePropagation(), true);
-    document['on' + t] = null; document.body['on' + t] = null;
+  if (!window.__hbUnblocked) {
+    window.__hbUnblocked = true;
+    // Undo right-click / selection / copy blocking.
+    for (const t of ['contextmenu', 'selectstart', 'copy']) {
+      window.addEventListener(t, (e) => e.stopImmediatePropagation(), true);
+      document['on' + t] = null; if (document.body) document.body['on' + t] = null;
+    }
+    const st = document.createElement('style');
+    st.textContent = '*{user-select:text!important;-webkit-user-select:text!important}';
+    (document.head || document.documentElement).append(st);
   }
-  const st = document.createElement('style');
-  st.textContent = '*{user-select:text!important;-webkit-user-select:text!important}';
-  document.head.append(st);
   return removed;
+}`;
+
+const unwallScript = `(() => { ${UNWALL_FN}; return __hbUnwall(); })()`;
+
+// Keeps removing walls as the page changes (for sites that re-show the wall
+// on every screen / after every click).
+const watchScript = `(() => {
+  if (window.__hbWatch) return 0;
+  window.__hbWatch = true;
+  ${UNWALL_FN};
+  let pending = false;
+  const run = () => { pending = false; try { __hbUnwall(); } catch (e) {} };
+  new MutationObserver(() => { if (!pending) { pending = true; setTimeout(run, 300); } })
+    .observe(document.documentElement, { childList: true, subtree: true, attributes: true, attributeFilter: ['style', 'class'] });
+  return __hbUnwall();
 })()`;
+
+// Sites where walls are removed automatically.
+const autoFile = () => path.join(app.getPath('userData'), 'auto-walls.json');
+let autoSites = null;
+function auto() {
+  if (autoSites) return autoSites;
+  try { autoSites = new Set(JSON.parse(fs.readFileSync(autoFile(), 'utf8'))); } catch { autoSites = new Set(); }
+  return autoSites;
+}
+function setAuto(host, on) {
+  const a = auto();
+  if (on) a.add(host); else a.delete(host);
+  try { fs.writeFileSync(autoFile(), JSON.stringify([...a], null, 2)); } catch {}
+  console.log('[hider] auto-walls', on ? 'ON' : 'OFF', 'for', host);
+}
 
 function remember(host, sel) {
   const s = load();
@@ -82,11 +170,12 @@ function remember(host, sel) {
   console.log('[hider] hid on', host + ':', sel);
 }
 
-function attach(wc, { createTab, onChange }) {
+function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
   // Re-apply this site's hidden elements on every page load.
   wc.on('dom-ready', () => {
     const list = load()[hostOf(wc.getURL())];
     if (list && list.length) wc.insertCSS(cssFor(list)).catch(() => {});
+    if (auto().has(hostOf(wc.getURL()))) wc.executeJavaScript(watchScript).catch(() => {});
   });
 
   const hideAt = async (x, y) => {
@@ -98,9 +187,29 @@ function attach(wc, { createTab, onChange }) {
     return sel;
   };
   const unwall = async () => {
+    const host = hostOf(wc.getURL());
     const n = await wc.executeJavaScript(unwallScript).catch(() => 0);
-    console.log('[hider] removed', n, 'overlay(s) on', hostOf(wc.getURL()));
+    console.log('[hider] removed', n, 'overlay(s) on', host);
+    if (host && !auto().has(host) && onToast) {
+      onToast(`Removed ${n} wall(s). Wall keeps coming back? Click here to always remove walls on ${host}.`, 'auto-walls-on');
+    }
     return n;
+  };
+  const isAuto = () => auto().has(hostOf(wc.getURL()));
+  const setAutoWalls = (on) => {
+    const host = hostOf(wc.getURL());
+    if (!host) return;
+    setAuto(host, on);
+    if (on) wc.executeJavaScript(watchScript).catch(() => {});
+    else wc.reload();
+    onToast && onToast(on ? `Walls will be removed automatically on ${host}.` : `Auto wall removal off for ${host}.`);
+    onChange && onChange();
+  };
+
+  const pickMode = async () => {
+    wc.focus();
+    const pt = await wc.executeJavaScript(pickModeScript).catch(() => null);
+    return pt ? hideAt(pt.x, pt.y) : null;
   };
 
   // Track the mouse so keyboard shortcuts can act on whatever is under the cursor.
@@ -117,6 +226,7 @@ function attach(wc, { createTab, onChange }) {
     if (k === 'h') { e.preventDefault(); hideAt(mouse.x, mouse.y); }
     else if (k === 'x') { e.preventDefault(); unwall(); }
     else if (k === 'm') { e.preventDefault(); showMenu({ x: mouse.x, y: mouse.y }); }
+    else if (k === 's') { e.preventDefault(); onScreenshot && onScreenshot(); }
   });
 
   wc.on('context-menu', (_e, p) => showMenu(p));
@@ -129,14 +239,14 @@ function attach(wc, { createTab, onChange }) {
     if (p.linkURL && /^https?:/i.test(p.linkURL)) {
       tpl.push(
         { label: 'Open Link in New Tab', click: () => createTab(p.linkURL) },
-        { label: 'Copy Link Address', click: () => clipboard.writeText(p.linkURL) },
+        { label: 'Copy Link Address', click: () => copyText(p.linkURL) },
         { type: 'separator' },
       );
     }
     if (p.srcURL && p.mediaType === 'image') {
       tpl.push(
         { label: 'Open Image in New Tab', click: () => createTab(p.srcURL) },
-        { label: 'Copy Image Address', click: () => clipboard.writeText(p.srcURL) },
+        { label: 'Copy Image Address', click: () => copyText(p.srcURL) },
         { type: 'separator' },
       );
     }
@@ -166,6 +276,19 @@ function attach(wc, { createTab, onChange }) {
         click: unwall,
       },
       {
+        label: 'Always Remove Walls on This Site',
+        type: 'checkbox',
+        checked: auto().has(host),
+        enabled: !!host,
+        click: (item) => setAutoWalls(item.checked),
+      },
+      {
+        label: 'Take Screenshot',
+        accelerator: 'CmdOrCtrl+Shift+S',
+        registerAccelerator: false,
+        click: () => onScreenshot && onScreenshot(),
+      },
+      {
         label: `Show Hidden Elements on This Site (${hiddenCount})`,
         enabled: hiddenCount > 0,
         click: () => {
@@ -185,7 +308,7 @@ function attach(wc, { createTab, onChange }) {
     Menu.buildFromTemplate(tpl).popup();
   }
 
-  return { hideAt, unwall, showMenu, getMouse: () => mouse };
+  return { hideAt, unwall, pickMode, showMenu, isAuto, setAutoWalls, getMouse: () => mouse };
 }
 
-module.exports = { attach, remember, _pickScript: pickScript, _unwallScript: unwallScript };
+module.exports = { attach, remember, _pickScript: pickScript, _pickModeScript: pickModeScript, _unwallScript: unwallScript, _watchScript: watchScript };

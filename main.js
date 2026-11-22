@@ -757,7 +757,7 @@ function mainMenu(x, y) {
     show('print'), show('pip'), show('fullscreen'),
     { type: 'separator' },
     show('settings'), show('updates'),
-    { label: `About H Browser ${app.getVersion()}`, click: () => shell.openExternal('https://github.com/Alawieh/hussein-browser') },
+    { label: `About H Browser ${app.getVersion()}`, click: () => shell.openExternal('https://github.com/Alawieh/h-browser') },
     { type: 'separator' },
     { label: 'Exit', click: () => app.quit() },
   ], x, y);

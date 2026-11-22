@@ -10,14 +10,14 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Alawieh/hussein-browser/releases/latest"><b>⬇ Download for Windows</b></a>
+  <a href="https://github.com/Alawieh/h-browser/releases/latest"><b>⬇ Download for Windows</b></a>
 </p>
 
 ---
 
 ## Install (Windows)
 
-1. Go to the **[latest release](https://github.com/Alawieh/hussein-browser/releases/latest)**.
+1. Go to the **[latest release](https://github.com/Alawieh/h-browser/releases/latest)**.
 2. Download **`H-Browser-Setup-x.x.x.exe`**.
 3. Double-click it. It installs and opens automatically, and adds a Desktop and Start Menu shortcut.
 
@@ -114,8 +114,8 @@ The only condition is to keep the license text in your copy. No permission neede
 You need [Node.js](https://nodejs.org) 18 or newer.
 
 ```bash
-git clone https://github.com/Alawieh/hussein-browser.git
-cd hussein-browser
+git clone https://github.com/Alawieh/h-browser.git
+cd h-browser
 npm install
 npm start          # run the browser
 npm run dist       # build the Windows installer + portable .exe into dist/

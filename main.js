@@ -10,6 +10,8 @@ const HOME = 'https://www.google.com';
 const TEST_URL = process.env.BROWSER_TEST_URL; // optional: open this URL on start (for testing)
 
 let win, ui, browsingSession, blocker;
+let videoFullscreen = false; // a page (e.g. a video player) asked for fullscreen
+let f11Fullscreen = false;   // user pressed F11
 let blockingEnabled = true;
 let blockedTotal = 0;
 const tabs = new Map(); // id -> { view, blocked }
@@ -48,11 +50,20 @@ function pushState() {
 
 function layout() {
   const { width, height } = win.getContentBounds();
+  // In fullscreen the toolbar is hidden and the page fills the whole screen.
+  const top = videoFullscreen || f11Fullscreen ? 0 : TOOLBAR_HEIGHT;
+  ui.setVisible(top > 0);
   ui.setBounds({ x: 0, y: 0, width, height: TOOLBAR_HEIGHT });
   for (const [id, t] of tabs) {
-    t.view.setBounds({ x: 0, y: TOOLBAR_HEIGHT, width, height: Math.max(0, height - TOOLBAR_HEIGHT) });
+    t.view.setBounds({ x: 0, y: top, width, height: Math.max(0, height - top) });
     t.view.setVisible(id === activeId);
   }
+}
+
+function setF11(on) {
+  f11Fullscreen = on;
+  if (!videoFullscreen) win.setFullScreen(on);
+  layout();
 }
 
 function normalizeInput(input) {
@@ -110,6 +121,23 @@ function createTab(url = HOME) {
   for (const ev of ['did-start-loading', 'did-stop-loading', 'page-title-updated', 'did-navigate', 'did-navigate-in-page']) {
     wc.on(ev, pushState);
   }
+  wc.on('enter-html-full-screen', () => {
+    videoFullscreen = true;
+    win.setFullScreen(true);
+    layout();
+  });
+  wc.on('leave-html-full-screen', () => {
+    videoFullscreen = false;
+    if (!f11Fullscreen) win.setFullScreen(false);
+    layout();
+  });
+  // Esc leaves F11 fullscreen (video fullscreen handles Esc itself).
+  wc.on('before-input-event', (e, input) => {
+    if (input.type === 'keyDown' && input.key === 'Escape' && f11Fullscreen && !videoFullscreen) {
+      e.preventDefault();
+      setF11(false);
+    }
+  });
   wc.on('did-start-navigation', (_e, _url, isInPlace, isMainFrame) => {
     if (isMainFrame && !isInPlace) {
       tabs.get(id).blocked = 0;
@@ -258,6 +286,7 @@ function buildMenu() {
         { label: 'Reload', accelerator: 'F5', visible: false, click: () => activeWC()?.reload() },
         { label: 'Back', accelerator: 'Alt+Left', click: () => activeWC()?.navigationHistory.goBack() },
         { label: 'Forward', accelerator: 'Alt+Right', click: () => activeWC()?.navigationHistory.goForward() },
+        { label: 'Full Screen', accelerator: 'F11', click: () => setF11(!f11Fullscreen) },
         { label: 'Developer Tools', accelerator: 'F12', click: () => activeWC()?.toggleDevTools() },
         { type: 'separator' },
         { role: 'quit' },
@@ -287,6 +316,15 @@ app.whenReady().then(async () => {
   win.contentView.addChildView(ui);
   ui.webContents.loadFile(path.join(__dirname, 'ui', 'index.html'));
   win.on('resize', layout);
+  win.on('enter-full-screen', layout);
+  win.on('leave-full-screen', () => {
+    // Window left fullscreen some other way (e.g. Windows shortcut): restore the toolbar.
+    if (f11Fullscreen || videoFullscreen) {
+      f11Fullscreen = false;
+      if (videoFullscreen) activeWC()?.executeJavaScript('document.fullscreenElement && document.exitFullscreen()').catch(() => {});
+    }
+    layout();
+  });
   win.on('closed', () => app.quit());
   buildMenu();
 

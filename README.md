@@ -63,6 +63,7 @@ The three buttons next to the address bar:
 | `Ctrl+L` | Jump to the address bar |
 | `Ctrl+R` or `F5` | Reload |
 | `Alt+←` / `Alt+→` | Back / forward |
+| `F11` | Full screen (`Esc` to exit) |
 | `F12` | Developer tools |
 
 The `Ctrl+Shift` shortcuts reach the browser before the web page sees them, so sites can't block them.

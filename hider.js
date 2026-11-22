@@ -170,7 +170,7 @@ function remember(host, sel) {
   console.log('[hider] hid on', host + ':', sel);
 }
 
-function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
+function attach(wc, { createTab, onChange, onScreenshot, onToast, onPip, search }) {
   // Re-apply this site's hidden elements on every page load.
   wc.on('dom-ready', () => {
     const list = load()[hostOf(wc.getURL())];
@@ -238,7 +238,8 @@ function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
 
     if (p.linkURL && /^https?:/i.test(p.linkURL)) {
       tpl.push(
-        { label: 'Open Link in New Tab', click: () => createTab(p.linkURL) },
+        { label: 'Open Link in New Tab', click: () => createTab(p.linkURL, { background: true }) },
+        { label: 'Open Link in Private Tab', click: () => createTab(p.linkURL, { private: true }) },
         { label: 'Copy Link Address', click: () => copyText(p.linkURL) },
         { type: 'separator' },
       );
@@ -253,10 +254,13 @@ function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
     if (p.selectionText) {
       tpl.push(
         { role: 'copy' },
-        { label: `Search Google for "${p.selectionText.slice(0, 30)}${p.selectionText.length > 30 ? '…' : ''}"`,
-          click: () => createTab('https://www.google.com/search?q=' + encodeURIComponent(p.selectionText)) },
+        { label: `Search ${search().name} for "${p.selectionText.slice(0, 30)}${p.selectionText.length > 30 ? '…' : ''}"`,
+          click: () => createTab(search().url + encodeURIComponent(p.selectionText)) },
         { type: 'separator' },
       );
+    }
+    if (p.mediaType === 'video') {
+      tpl.push({ label: 'Picture in Picture', click: () => onPip && onPip(p.x, p.y) }, { type: 'separator' });
     }
     if (p.isEditable) {
       tpl.push({ role: 'cut' }, { role: 'copy' }, { role: 'paste' }, { role: 'selectAll' }, { type: 'separator' });
@@ -289,6 +293,12 @@ function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
         click: () => onScreenshot && onScreenshot(),
       },
       {
+        label: 'Picture in Picture (Video)',
+        accelerator: 'CmdOrCtrl+Shift+P',
+        registerAccelerator: false,
+        click: () => onPip && onPip(p.x, p.y),
+      },
+      {
         label: `Show Hidden Elements on This Site (${hiddenCount})`,
         enabled: hiddenCount > 0,
         click: () => {
@@ -311,4 +321,19 @@ function attach(wc, { createTab, onChange, onScreenshot, onToast }) {
   return { hideAt, unwall, pickMode, showMenu, isAuto, setAutoWalls, getMouse: () => mouse };
 }
 
-module.exports = { attach, remember, _pickScript: pickScript, _pickModeScript: pickModeScript, _unwallScript: unwallScript, _watchScript: watchScript };
+// For the settings page.
+function listHidden() {
+  return load();
+}
+function unhide(host, selector) {
+  const s = load();
+  if (!s[host]) return;
+  s[host] = selector ? s[host].filter((x) => x !== selector) : [];
+  if (!s[host].length) delete s[host];
+  save();
+}
+function listAuto() {
+  return [...auto()].sort();
+}
+
+module.exports = { attach, remember, listHidden, unhide, listAuto, setAuto, _pickScript: pickScript, _pickModeScript: pickModeScript, _unwallScript: unwallScript, _watchScript: watchScript };
